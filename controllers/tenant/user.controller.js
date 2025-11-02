@@ -174,7 +174,17 @@ const updateTenantUser = async (req, res, next) => {
       role, 
       department, 
       position, 
-      isActive 
+      isActive,
+      // Additional employee fields
+      employeeId,
+      dateOfJoining,
+      gender,
+      panNumber,
+      aadhaarNumber,
+      uanNumber,
+      esicIpNumber,
+      bankAccountNumber,
+      ifscCode
     } = req.body;
 
     const user = await TenantUser.findOne({ 
@@ -194,7 +204,19 @@ const updateTenantUser = async (req, res, next) => {
       }
     }
 
-    // Update fields
+    // Check if employeeId is being changed and already exists
+    if (employeeId && employeeId !== user.employeeId) {
+      const existingEmployee = await TenantUser.findOne({
+        organization: organizationId,
+        employeeId: employeeId,
+        _id: { $ne: userId }
+      });
+      if (existingEmployee) {
+        throw new ApiError('Employee ID already exists in this organization', 409);
+      }
+    }
+
+    // Update basic fields
     if (firstName) user.firstName = firstName;
     if (lastName) user.lastName = lastName;
     if (email) user.email = email;
@@ -203,6 +225,17 @@ const updateTenantUser = async (req, res, next) => {
     if (department !== undefined) user.department = department;
     if (position !== undefined) user.position = position;
     if (isActive !== undefined) user.isActive = isActive;
+
+    // Update additional employee fields
+    if (employeeId !== undefined) user.employeeId = employeeId;
+    if (dateOfJoining !== undefined) user.dateOfJoining = dateOfJoining;
+    if (gender !== undefined) user.gender = gender;
+    if (panNumber !== undefined) user.panNumber = panNumber;
+    if (aadhaarNumber !== undefined) user.aadhaarNumber = aadhaarNumber;
+    if (uanNumber !== undefined) user.uanNumber = uanNumber;
+    if (esicIpNumber !== undefined) user.esicIpNumber = esicIpNumber;
+    if (bankAccountNumber !== undefined) user.bankAccountNumber = bankAccountNumber;
+    if (ifscCode !== undefined) user.ifscCode = ifscCode;
 
     await user.save();
 

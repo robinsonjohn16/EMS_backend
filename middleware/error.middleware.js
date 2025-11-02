@@ -15,30 +15,30 @@ const errorHandler = (err, req, res, next) => {
   // Mongoose bad ObjectId
   if (err.name === 'CastError') {
     const message = 'Resource not found';
-    error = new ApiError(404, message);
+    error = new ApiError(message, 404);
   }
 
   // Mongoose duplicate key
   if (err.code === 11000) {
     const message = 'Duplicate field value entered';
-    error = new ApiError(400, message);
+    error = new ApiError(message, 400);
   }
 
   // Mongoose validation error
   if (err.name === 'ValidationError') {
     const message = Object.values(err.errors).map(val => val.message).join(', ');
-    error = new ApiError(400, message);
+    error = new ApiError(message, 400);
   }
 
   // JWT errors
   if (err.name === 'JsonWebTokenError') {
     const message = 'Invalid token';
-    error = new ApiError(401, message);
+    error = new ApiError(message, 401);
   }
 
   if (err.name === 'TokenExpiredError') {
     const message = 'Token expired';
-    error = new ApiError(401, message);
+    error = new ApiError(message, 401);
   }
 
   // Custom API errors

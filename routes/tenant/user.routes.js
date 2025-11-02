@@ -29,13 +29,13 @@ router.get('/export/:organizationId', authenticateUser, exportTenantUsers); // S
 router.use(validateSubdomain);
 
 // User management routes (require manager or hr role)
-router.get('/', authenticateTenant, requireRole(['manager', 'hr']), getTenantUsers);
-router.get('/stats', authenticateTenant, requireRole(['manager', 'hr']), getTenantUserStats);
-router.get('/:userId', authenticateTenant, requireRole(['manager', 'hr']), getTenantUser);
-router.put('/:userId', authenticateTenant, requireRole(['manager', 'hr']), updateTenantUser);
-router.delete('/:userId', authenticateTenant, requireRole(['manager']), deleteTenantUser);
-router.patch('/:userId/status', authenticateTenant, requireRole(['manager', 'hr']), toggleTenantUserStatus);
-router.post('/bulk-update', authenticateTenant, requireRole(['manager']), bulkUpdateTenantUsers);
-router.get('/export/csv', authenticateTenant, requireRole(['manager', 'hr']), exportTenantUsers);
+router.get('/', authenticateTenant, requireRole('manager', 'hr', 'employee'), getTenantUsers);
+router.get('/stats', authenticateTenant, requireRole('manager', 'hr', 'employee'), getTenantUserStats);
+router.get('/:userId', authenticateTenant, requireRole('manager', 'hr', 'employee'), getTenantUser);
+router.put('/:userId', authenticateTenant, requireRole('manager', 'hr', 'employee'), updateTenantUser);
+router.delete('/:userId', authenticateTenant, requireRole('manager'), deleteTenantUser);
+router.patch('/:userId/status', authenticateTenant, requireRole('manager', 'hr'), toggleTenantUserStatus);
+router.post('/bulk-update', authenticateTenant, requireRole('manager'), bulkUpdateTenantUsers);
+router.get('/export/csv', authenticateTenant, requireRole('manager', 'hr'), exportTenantUsers);
 
 export default router;

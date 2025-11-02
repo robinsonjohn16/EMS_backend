@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import Organization from '../organization.model.js';
 
 const tenantUserSchema = new mongoose.Schema({
   username: {
@@ -61,9 +62,27 @@ const tenantUserSchema = new mongoose.Schema({
     trim: true,
     maxlength: [100, 'Position must be less than 100 characters']
   },
+  // Added core employment and identity fields
+  employeeId: { type: String, trim: true },
+  dateOfJoining: { type: Date },
+  gender: { type: String, enum: ['male', 'female', 'other'] },
+  panNumber: { type: String, trim: true },
+  aadhaarNumber: { type: String, trim: true },
+  uanNumber: { type: String, trim: true },
+  esicIpNumber: { type: String, trim: true },
+  bankAccountNumber: { type: String, trim: true },
+  ifscCode: { type: String, trim: true },
+  avatar: { type: String, trim: true },
   isActive: {
     type: Boolean,
     default: true
+  },
+  online: {
+    type: Boolean,
+    default: false
+  },
+  lastSeenAt: {
+    type: Date
   },
   // New: explicit HR feature selections (controlled via Settings UI)
   hrFeatureAccess: {
@@ -90,6 +109,9 @@ const tenantUserSchema = new mongoose.Schema({
 // Index for better query performance
 tenantUserSchema.index({ organization: 1, email: 1 });
 tenantUserSchema.index({ organization: 1, username: 1 });
+tenantUserSchema.index({ organization: 1, online: 1 });
+// Ensure employeeId is unique per organization when present
+tenantUserSchema.index({ organization: 1, employeeId: 1 }, { unique: true, sparse: true });
 
 // Hash password before saving
 tenantUserSchema.pre('save', async function(next) {
@@ -103,6 +125,46 @@ tenantUserSchema.pre('save', async function(next) {
     next(error);
   }
 });
+
+// Auto-generate employeeId for employees if missing
+tenantUserSchema.pre('save', async function(next) {
+  try {
+    if (this.isNew && (!this.employeeId || !this.employeeId.trim()) && this.role === 'employee') {
+      const org = await Organization.findById(this.organization).lean();
+      const base = (org?.slug || org?.name || 'EMP').toString().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+      const prefix = base || 'EMP';
+      const count = await mongoose.model('TenantUser').countDocuments({ organization: this.organization, employeeId: new RegExp(`^${prefix}`) });
+      const nextNum = String(count + 1).padStart(4, '0');
+      this.employeeId = `${prefix}${nextNum}`;
+    }
+    // Normalize certain identity fields
+    if (this.panNumber) this.panNumber = this.panNumber.toUpperCase().trim();
+    if (this.ifscCode) this.ifscCode = this.ifscCode.toUpperCase().trim();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Static method to find user by organization and email
+tenantUserSchema.statics.findByOrganizationAndEmail = function(organizationId, email) {
+  return this.findOne({ organization: organizationId, email: email.toLowerCase() });
+};
+
+// Static method to find user by organization and username
+tenantUserSchema.statics.findByOrganizationAndUsername = function(organizationId, username) {
+  return this.findOne({ organization: organizationId, username: username });
+};
+
+// Generate next employeeId for an organization (helper)
+tenantUserSchema.statics.generateEmployeeIdForOrg = async function(organizationId) {
+  const org = await Organization.findById(organizationId).lean();
+  const base = (org?.slug || org?.name || 'EMP').toString().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+  const prefix = base || 'EMP';
+  const count = await this.countDocuments({ organization: organizationId, employeeId: new RegExp(`^${prefix}`) });
+  const nextNum = String(count + 1).padStart(4, '0');
+  return `${prefix}${nextNum}`;
+};
 
 // Compare password method
 tenantUserSchema.methods.comparePassword = async function(candidatePassword) {
@@ -147,16 +209,6 @@ tenantUserSchema.methods.generateRefreshToken = function() {
 tenantUserSchema.methods.updateLastLogin = function() {
   this.lastLogin = new Date();
   return this.save();
-};
-
-// Static method to find user by organization and email
-tenantUserSchema.statics.findByOrganizationAndEmail = function(organizationId, email) {
-  return this.findOne({ organization: organizationId, email: email.toLowerCase() });
-};
-
-// Static method to find user by organization and username
-tenantUserSchema.statics.findByOrganizationAndUsername = function(organizationId, username) {
-  return this.findOne({ organization: organizationId, username: username });
 };
 
 // Virtual for full name (if needed later)

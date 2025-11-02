@@ -155,6 +155,19 @@ const EmployeeSchema = new mongoose.Schema({
   updatedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'TenantUser'
+  },
+  // Unlock request workflow
+  unlockStatus: {
+    status: {
+      type: String,
+      enum: ['none', 'requested', 'approved', 'rejected'],
+      default: 'none'
+    },
+    requestedAt: { type: Date },
+    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'TenantUser' },
+    reviewedAt: { type: Date },
+    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'TenantUser' },
+    reason: { type: String, trim: true }
   }
 }, {
   timestamps: true,

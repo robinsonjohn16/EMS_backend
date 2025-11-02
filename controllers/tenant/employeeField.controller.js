@@ -2,6 +2,7 @@ import EmployeeField from '../../models/tenant/employeeField.model.js';
 import Employee from '../../models/tenant/employee.model.js';
 import { successResponse } from '../../utils/apiResponse.js';
 import { ApiError } from '../../utils/errorClasses.js';
+import TenantUser from '../../models/tenant/auth.model.js';
 
 // Create a new field category
 export const createFieldCategory = async (req, res, next) => {
@@ -58,7 +59,16 @@ export const getFieldCategories = async (req, res, next) => {
       .sort({ order: 1, name: 1 })
       .populate('createdBy', 'firstName lastName')
       .populate('updatedBy', 'firstName lastName');
-    
+
+    const profile = await TenantUser.findById(userId)
+    // const profile = userProfile ? {
+    //   employeeId: userProfile.employeeId || null,
+    //   dateOfJoining: userProfile.dateOfJoining || null,
+    //   uanNumber: userProfile.uanNumber || null,
+    //   esicIpNumber: userProfile.esicIpNumber || null,
+    // } : null;
+    console.log(profile)
+
     // Always fetch and include the user's data if userId is available
     if (userId) {
       const employee = await Employee.findOne({ 
@@ -67,35 +77,47 @@ export const getFieldCategories = async (req, res, next) => {
       });
       
       if (employee && employee.customFields) {
-        // Create a deep copy of categories to avoid modifying the original
         const categoriesWithUserData = JSON.parse(JSON.stringify(categories));
+
+        // Helper to read from Map or plain object
+        const readKey = (obj, key) => {
+          if (!obj) return undefined;
+          if (typeof obj.get === 'function') return obj.get(key);
+          return obj[key];
+        };
         
-        // Inject user data directly into each category's fields
         categoriesWithUserData.forEach(category => {
           if (category.fields && category.fields.length > 0) {
             category.fields.forEach(field => {
               const customFields = employee.customFields;
-              
-              // Check for field value in different possible locations
-              if (customFields[field._id]) {
-                field.value = customFields[field._id];
-              } else if (customFields[field.name]) {
-                field.value = customFields[field.name];
-              } else if (customFields[category.name] && customFields[category.name][field.name]) {
-                field.value = customFields[category.name][field.name];
+              const byId = readKey(customFields, field._id?.toString?.() || field._id);
+              const byName = readKey(customFields, field.name);
+              const nestedCat = readKey(customFields, category.name);
+              const nestedVal = nestedCat && (nestedCat[field.name] !== undefined ? nestedCat[field.name] : undefined);
+
+              if (byId !== undefined) {
+                field.value = byId;
+              } else if (byName !== undefined) {
+                field.value = byName;
+              } else if (nestedVal !== undefined) {
+                field.value = nestedVal;
               }
             });
           }
         });
-        console.log(categoriesWithUserData, employee.customFields)
-        // Also include the raw customFields for reference
+
+        // Serialize customFields Map to plain object for response consistency
+        const raw = employee.customFields;
+        const userData = (raw && typeof raw.get === 'function') ? Object.fromEntries(raw) : raw;
+
         return successResponse(
           res,
           200,
           'Field categories with user data retrieved successfully',
           { 
             categories: categoriesWithUserData,
-            userData: employee.customFields 
+            userData,
+            profile
           }
         );
       }
@@ -105,7 +127,7 @@ export const getFieldCategories = async (req, res, next) => {
       res,
       200,
       'Field categories retrieved successfully',
-      { categories }
+      { categories, profile }
     );
   } catch (error) {
     next(error);

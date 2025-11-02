@@ -222,3 +222,185 @@ export const deleteOrganization = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Get organization by subdomain (for tenant users)
+// @route   GET /api/tenant/organization/:subdomain
+// @access  Private (Tenant Users)
+export const getOrganizationBySubdomain = async (req, res, next) => {
+  try {
+    const { subdomain } = req.params;
+    
+    const organization = await Organization.findOne({ slug: subdomain });
+    
+    if (!organization) {
+      throw new ApiError('Organization not found', 404);
+    }
+    
+    return successResponse(res, 200, 'Organization retrieved successfully', organization);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update organization settings (Manager only)
+// @route   PUT /api/tenant/organization/:organizationId/settings
+// @access  Private (Manager only)
+export const updateOrganizationSettings = async (req, res, next) => {
+  try {
+    const { organizationId } = req.params;
+    const {
+      name,
+      description,
+      email,
+      phone,
+      website,
+      industry,
+      foundedYear,
+      establishedYear,
+      employeeCount
+    } = req.body;
+    
+    // Find the organization
+    const organization = await Organization.findById(organizationId);
+    
+    if (!organization) {
+      throw new ApiError('Organization not found', 404);
+    }
+    
+    // Email format validation (if provided)
+    if (email) {
+      const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
+      if (!emailRegex.test(email)) {
+        throw new ApiError('Please provide a valid email address', 400);
+      }
+      
+      // Check if email is being changed and if it already exists
+      if (email !== organization.email) {
+        const existingOrg = await Organization.findOne({ email });
+        if (existingOrg) {
+          throw new ApiError('Organization with this email already exists', 409);
+        }
+      }
+    }
+    
+    // Website format validation (if provided)
+    if (website) {
+      const urlRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/;
+      if (!urlRegex.test(website)) {
+        throw new ApiError('Please provide a valid website URL', 400);
+      }
+    }
+    
+    // Validate year if provided
+    if (establishedYear && (establishedYear < 1900 || establishedYear > new Date().getFullYear())) {
+      throw new ApiError('Please provide a valid established year', 400);
+    }
+    
+    if (foundedYear && (foundedYear < 1900 || foundedYear > new Date().getFullYear())) {
+      throw new ApiError('Please provide a valid founded year', 400);
+    }
+    
+    // Validate employee count if provided
+    if (employeeCount && employeeCount < 0) {
+      throw new ApiError('Employee count cannot be negative', 400);
+    }
+    
+    // Create update object
+    const updateData = {};
+    
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (email !== undefined) updateData.email = email;
+    if (phone !== undefined) updateData.phone = phone;
+    if (website !== undefined) updateData.website = website;
+    if (industry !== undefined) updateData.industry = industry;
+    if (foundedYear !== undefined) updateData.foundedYear = foundedYear;
+    if (establishedYear !== undefined) updateData.establishedYear = establishedYear;
+    if (employeeCount !== undefined) updateData.employeeCount = employeeCount;
+    
+    // Update the organization
+    const updatedOrganization = await Organization.findByIdAndUpdate(
+      organizationId,
+      updateData,
+      {
+        new: true,
+        runValidators: true
+      }
+    );
+    
+    return successResponse(res, 200, 'Organization settings updated successfully', {
+      success: true,
+      organization: updatedOrganization
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update organization logo (Manager only)
+// @route   PUT /api/tenant/organization/:organizationId/logo
+// @access  Private (Manager only)
+export const updateOrganizationLogo = async (req, res, next) => {
+  try {
+    const { organizationId } = req.params;
+    
+    // Find the organization
+    const organization = await Organization.findById(organizationId);
+    
+    if (!organization) {
+      throw new ApiError('Organization not found', 404);
+    }
+    
+    // Handle file upload for logo
+    if (req.file) {
+      // File was uploaded via multer
+      const logoPath = req.file.path;
+      organization.logo = logoPath;
+      await organization.save();
+      
+      return successResponse(res, 200, 'Organization logo updated successfully', {
+        success: true,
+        organization: organization
+      });
+    } else {
+      throw new ApiError('No logo file provided', 400);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get organization statistics
+// @route   GET /api/tenant/organization/:organizationId/stats
+// @access  Private (Manager/HR only)
+export const getOrganizationStats = async (req, res, next) => {
+  try {
+    const { organizationId } = req.params;
+    
+    const organization = await Organization.findById(organizationId);
+    
+    if (!organization) {
+      throw new ApiError('Organization not found', 404);
+    }
+    
+    // Get employee count from TenantUser collection
+    const TenantUser = req.app.models.TenantUser;
+    const employeeCount = await TenantUser.countDocuments({ 
+      organization: organizationId,
+      isActive: true 
+    });
+    
+    const stats = {
+      totalEmployees: employeeCount,
+      organization: {
+        name: organization.name,
+        establishedYear: organization.establishedYear || organization.foundedYear,
+        industry: organization.industry
+      }
+    };
+    
+    return successResponse(res, 200, 'Organization statistics retrieved successfully', stats);
+  } catch (error) {
+    next(error);
+  }
+};

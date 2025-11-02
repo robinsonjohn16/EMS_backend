@@ -67,36 +67,72 @@ export const getProfile = async (req, res, next) => {
 
 export const updateProfile = async (req, res, next) => {
   try {
-    const { firstName, lastName, avatar, hrFeatureAccess } = req.body;
-    const user = await TenantUser.findById(req.user.id);
-    
+    const { 
+      firstName, 
+      lastName, 
+      avatar, 
+      hrFeatureAccess,
+      panNumber,
+      aadhaarNumber,
+      bankAccountNumber,
+      ifscCode,
+      gender
+    } = req.body
+    const user = await TenantUser.findById(req.user.id)
     if (!user) {
-      throw new ApiError('User not found', 404);
+      throw new ApiError('User not found', 404)
     }
 
-    if (firstName !== undefined) user.firstName = firstName;
-    if (lastName !== undefined) user.lastName = lastName;
-    if (avatar !== undefined) user.avatar = avatar;
+    const updateSet = {}
 
-    // Allow HR to explicitly select HR-related features
+    // Normalize avatar path to web URL under /uploads
+    if (req.file) {
+      const orgId = req.organization?._id?.toString() || req.user?.organization?.toString() || 'unknown_org'
+      const avatarUrlPath = `/uploads/avatars/${orgId}/${req.file.filename}`
+      updateSet.avatar = avatarUrlPath
+    }
+
+    if (firstName !== undefined) updateSet.firstName = firstName
+    if (lastName !== undefined) updateSet.lastName = lastName
+    if (avatar !== undefined) updateSet.avatar = avatar
+    if (panNumber !== undefined) updateSet.panNumber = panNumber
+    if (aadhaarNumber !== undefined) updateSet.aadhaarNumber = aadhaarNumber
+    if (bankAccountNumber !== undefined) updateSet.bankAccountNumber = bankAccountNumber
+    if (ifscCode !== undefined) updateSet.ifscCode = ifscCode
+    if (gender !== undefined) updateSet.gender = gender
+
     if (hrFeatureAccess !== undefined) {
       if (user.role !== 'hr') {
-        throw new ApiError('Only HR can update HR feature access selections', 403);
+        throw new ApiError('Only HR can update HR feature access selections', 403)
       }
-      user.hrFeatureAccess = {
+      updateSet.hrFeatureAccess = {
         attendanceConfig: !!hrFeatureAccess.attendanceConfig,
         leavePolicy: !!hrFeatureAccess.leavePolicy,
         geofencing: !!hrFeatureAccess.geofencing,
-      };
+      }
     }
 
-    await user.save();
+    if (Object.keys(updateSet).length === 0) {
+      return successResponse(res, 200, 'Profile updated successfully', user)
+    }
 
-    return successResponse(res, 200, 'Profile updated successfully', user);
+    const updatedUser = await TenantUser.findByIdAndUpdate(
+      req.user.id,
+      { $set: updateSet },
+      { new: true, runValidators: true, context: 'query' }
+    )
+
+    const userResponse = updatedUser.toObject()
+    delete userResponse.password
+
+    return successResponse(res, 200, 'Profile updated successfully', {
+      success: true,
+      user: userResponse
+    })
   } catch (error) {
-    next(error);
+    next(error)
   }
-};
+}
 
 // Subdomain-specific changePassword function
 export const changePassword = async (req, res, next) => {
@@ -361,63 +397,96 @@ export const getTenantUserProfile = async (req, res, next) => {
 // Update tenant user profile
 export const updateTenantUserProfile = async (req, res, next) => {
   try {
-    const { username, email, hrFeatureAccess } = req.body;
-    const userId = req.user._id;
+    const {
+      username,
+      email,
+      hrFeatureAccess,
+      avatar,
+      employeeId,
+      dateOfJoining,
+      gender,
+      panNumber,
+      aadhaarNumber,
+      uanNumber,
+      esicIpNumber,
+      bankAccountNumber,
+      ifscCode,
+      firstName,
+      lastName
+    } = req.body
 
-    // Check if email is being changed and if it already exists
+    const userId = req.user._id
+
     if (email) {
       const existingUser = await TenantUser.findOne({
         email,
         organization: req.user.organization,
         _id: { $ne: userId }
-      });
-
+      })
       if (existingUser) {
-        throw new ApiError('Email already exists in this organization', 409);
+        throw new ApiError('Email already exists in this organization', 409)
       }
     }
 
-    // Check if username is being changed and if it already exists
     if (username) {
       const existingUser = await TenantUser.findOne({
         username,
         organization: req.user.organization,
         _id: { $ne: userId }
-      });
-
+      })
       if (existingUser) {
-        throw new ApiError('Username already exists in this organization', 409);
+        throw new ApiError('Username already exists in this organization', 409)
       }
     }
 
-    const update = { username, email };
+    const user = await TenantUser.findById(userId)
+    if (!user) {
+      throw new ApiError('User not found', 404)
+    }
 
-    // Allow HR to explicitly select feature access via this route
+    if (username !== undefined) user.username = username
+    if (email !== undefined) user.email = email
+    if (firstName !== undefined) user.firstName = firstName
+    if (lastName !== undefined) user.lastName = lastName
+
+    // Normalize avatar path to web URL under /uploads
+    if (req.file) {
+      const orgId = req.organization?._id?.toString() || req.user?.organization?.toString() || 'unknown_org'
+      const avatarUrlPath = `/uploads/avatars/${orgId}/${req.file.filename}`
+      user.avatar = avatarUrlPath
+    } else if (avatar !== undefined) {
+      user.avatar = avatar
+    }
+
+    if (employeeId !== undefined) user.employeeId = employeeId
+    if (dateOfJoining !== undefined) user.dateOfJoining = dateOfJoining ? new Date(dateOfJoining) : undefined
+    if (gender !== undefined) user.gender = gender
+    if (panNumber !== undefined) user.panNumber = typeof panNumber === 'string' ? panNumber.toUpperCase().trim() : panNumber
+    if (aadhaarNumber !== undefined) user.aadhaarNumber = aadhaarNumber
+    if (uanNumber !== undefined) user.uanNumber = uanNumber
+    if (esicIpNumber !== undefined) user.esicIpNumber = esicIpNumber
+    if (bankAccountNumber !== undefined) user.bankAccountNumber = bankAccountNumber
+    if (ifscCode !== undefined) user.ifscCode = typeof ifscCode === 'string' ? ifscCode.toUpperCase().trim() : ifscCode
+
     if (hrFeatureAccess !== undefined) {
-      const current = await TenantUser.findById(userId);
-      if (!current) throw new ApiError('User not found', 404);
-      if (current.role !== 'hr') {
-        throw new ApiError('Only HR can update HR feature access selections', 403);
+      if (user.role !== 'hr') {
+        throw new ApiError('Only HR can update HR feature access selections', 403)
       }
-      update.hrFeatureAccess = {
+      user.hrFeatureAccess = {
         attendanceConfig: !!hrFeatureAccess.attendanceConfig,
         leavePolicy: !!hrFeatureAccess.leavePolicy,
         geofencing: !!hrFeatureAccess.geofencing,
-      };
+      }
     }
 
-    const updatedUser = await TenantUser.findByIdAndUpdate(
-      userId,
-      update,
-      { new: true, runValidators: true }
-    ).populate('organization', 'name slug');
+    await user.save()
+    await user.populate('organization', 'name slug')
 
-    if (!updatedUser) {
-      throw new ApiError('User not found', 404);
-    }
+    const userResponse = user.toObject()
+    delete userResponse.password
 
-    return successResponse(res, 200, 'Profile updated successfully', updatedUser);
+    return successResponse(res, 200, 'Profile updated successfully', userResponse)
   } catch (error) {
-    next(error);
+    next(error)
   }
-};
+}
